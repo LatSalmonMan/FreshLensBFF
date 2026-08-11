@@ -27,7 +27,11 @@ app.get('/health', async (req, res) => {
       exact: false,
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message || err) });
+    const hint =
+      String(err.message || err).includes('127.0.0.1')
+        ? ' Set POSTGRES_HOST=192.168.86.66 (and USER/PASSWORD/DB) on the TrueNAS app, then restart.'
+        : '';
+    res.status(500).json({ ok: false, error: String(err.message || err) + hint });
   }
 });
 
