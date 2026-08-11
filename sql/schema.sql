@@ -1,0 +1,31 @@
+-- Tables only (indexes applied after bulk import via indexes.sql).
+-- Safe to re-run: CREATE IF NOT EXISTS + ADD COLUMN IF NOT EXISTS.
+
+CREATE TABLE IF NOT EXISTS recipes (
+  id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  image_url TEXT,
+  minutes INTEGER,
+  servings INTEGER,
+  source_name TEXT,
+  origin TEXT NOT NULL DEFAULT 'local',
+  category TEXT,
+  cuisine TEXT,
+  link TEXT,
+  steps_json JSONB NOT NULL DEFAULT '[]'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
+  recipe_id TEXT NOT NULL,
+  name_raw TEXT NOT NULL,
+  name_norm TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ingredient_index (
+  token TEXT NOT NULL,
+  recipe_id TEXT NOT NULL,
+  ing_count SMALLINT NOT NULL DEFAULT 0
+);
+
+ALTER TABLE recipes ADD COLUMN IF NOT EXISTS link TEXT;
+ALTER TABLE ingredient_index ADD COLUMN IF NOT EXISTS ing_count SMALLINT NOT NULL DEFAULT 0;

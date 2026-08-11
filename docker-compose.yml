@@ -1,0 +1,81 @@
+# FreshLens BFF — recipe search API for TrueNAS SCALE (Docker Compose)
+#
+# Host paths (set in .env next to this file):
+#   HOST_DATA_DIR   = dataset folder with full_dataset.csv(.gz)
+#   HOST_PGDATA_DIR = empty folder for Postgres data (persistent)
+#
+# App URL from home Wi‑Fi: http://<NAS-LAN-IP>:3080
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-freshlens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-freshlens}
+      POSTGRES_DB: ${POSTGRES_DB:-recipes}
+    volumes:
+      - ${HOST_PGDATA_DIR:-./pgdata}:/var/lib/postgresql/data
+    # Moderate defaults (TrueNAS shares RAM). Raise for faster 2M import if NAS has ≥16GB.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-512MB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE:-2GB}
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=${PG_MAINTENANCE_MEM:-512MB}
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - jit=off
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks:
+      - freshlens
+
+  api:
+    build: .
+    image: freshlens-bff:latest
+    restart: unless-stopped
+    ports:
+      - '${API_PORT:-3080}:3080'
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-freshlens}:${POSTGRES_PASSWORD:-freshlens}@db:5432/${POSTGRES_DB:-recipes}
+      PORT: '3080'
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - freshlens
+
+  # One-shot CSV import — not started with `up`
+  #   docker compose --profile import run --rm importer -- --truncate
+  importer:
+    profiles: ['import']
+    image: freshlens-bff:latest
+    build: .
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-freshlens}:${POSTGRES_PASSWORD:-freshlens}@db:5432/${POSTGRES_DB:-recipes}
+      RECIPES_CSV: ${RECIPES_CSV:-/data/full_dataset.csv.gz}
+    volumes:
+      - ${HOST_DATA_DIR:-./data}:/data:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ['node', 'src/importCsv.js']
+    networks:
+      - freshlens
+
+networks:
+  freshlens:
+    driver: bridge

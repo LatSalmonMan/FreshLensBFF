@@ -1,0 +1,18 @@
+# Dependencies / build
+node_modules/
+npm-debug.log*
+
+# Secrets / local env
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+*.swp
+
+# Large recipe dumps (mount on TrueNAS dataset instead)
+data/*
+!data/.gitkeep
+!data/.gitignore
+*.csv
+*.csv.gz
