@@ -1,5 +1,7 @@
 # FreshLens BFF — TrueNAS recipe API
 
+Repo: [https://github.com/LatSalmonMan/FreshLensBFF](https://github.com/LatSalmonMan/FreshLensBFF)
+
 Backend-for-frontend recipe search for FreshLens.
 Postgres + Express on port **3080**. Image: **`ghcr.io/latsalmonman/freshlens-bff`**.
 
@@ -18,6 +20,8 @@ Postgres + Express on port **3080**. Image: **`ghcr.io/latsalmonman/freshlens-bf
 Pushes to `main` build and publish:
 
 `ghcr.io/latsalmonman/freshlens-bff:latest`
+
+Package: [ghcr.io/latsalmonman/freshlens-bff](https://github.com/LatSalmonMan/FreshLensBFF/pkgs/container/freshlens-bff)
 
 After the first run, open the package on GitHub → **Package settings** → set visibility to **Public** so TrueNAS can pull without a login.
 
@@ -40,7 +44,7 @@ Copy `full_dataset.csv.gz` into `data/` (SMB/SFTP from your Mac).
 1. Apps → Discover Apps  
 2. Click **⋮** beside **Custom App** → **Install via YAML**  
 3. Application name: `freshlens-bff`  
-4. Paste contents of [`truenas-compose.yaml`](truenas-compose.yaml)  
+4. Paste from [truenas-compose.yaml (raw)](https://raw.githubusercontent.com/LatSalmonMan/FreshLensBFF/main/truenas-compose.yaml) — or open the [repo file](https://github.com/LatSalmonMan/FreshLensBFF/blob/main/truenas-compose.yaml)  
 5. Edit the two `/mnt/SwimmingPool/...` volume paths if your pool/dataset differs  
 6. Save / Deploy  
 

@@ -1,5 +1,8 @@
 # FreshLens BFF — paste into TrueNAS: Apps → Discover Apps → ⋮ → Install via YAML
 #
+# Repo:     https://github.com/LatSalmonMan/FreshLensBFF
+# This file: https://raw.githubusercontent.com/LatSalmonMan/FreshLensBFF/main/truenas-compose.yaml
+#
 # Before install:
 #   1. Create folders on your pool (edit paths below to match):
 #        mkdir -p /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/{data,pgdata}
