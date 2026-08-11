@@ -1,0 +1,71 @@
+# FreshLens BFF — paste into TrueNAS: Apps → Discover Apps → ⋮ → Install via YAML
+#
+# Before install:
+#   1. Create folders on your pool (edit paths below to match):
+#        mkdir -p /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/{data,pgdata}
+#   2. Put full_dataset.csv.gz in the data/ folder
+#   3. Replace HOST paths in the volumes sections if your dataset path differs
+#
+# After deploy, import once (SSH on NAS) — see README.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: freshlens
+      POSTGRES_PASSWORD: freshlens
+      POSTGRES_DB: recipes
+    volumes:
+      # EDIT ME — empty dataset folder for Postgres files
+      - /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/pgdata:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - shared_buffers=512MB
+      - -c
+      - effective_cache_size=2GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - jit=off
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U freshlens -d recipes']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    image: ghcr.io/latsalmonman/freshlens-bff:latest
+    restart: unless-stopped
+    ports:
+      - '3080:3080'
+    environment:
+      DATABASE_URL: postgres://freshlens:freshlens@db:5432/recipes
+      PORT: '3080'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Optional one-shot importer — leave commented for Install via YAML,
+  # or uncomment after first deploy and re-apply YAML once, then comment again.
+  # importer:
+  #   image: ghcr.io/latsalmonman/freshlens-bff:latest
+  #   restart: 'no'
+  #   environment:
+  #     DATABASE_URL: postgres://freshlens:freshlens@db:5432/recipes
+  #     RECIPES_CSV: /data/full_dataset.csv.gz
+  #   volumes:
+  #     - /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/data:/data:ro
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #   entrypoint: ['node', 'src/importCsv.js', '--truncate', '--file', '/data/full_dataset.csv.gz']

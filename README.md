@@ -1,143 +1,133 @@
 # FreshLens BFF — TrueNAS recipe API
 
-Backend-for-frontend recipe search for [FreshLens](https://github.com/LatSalmonMan/FreshLens_AI).
-Postgres + Express on port **3080**. Loads ~2.2M recipes from RecipeNLG-style `full_dataset.csv`.
+Backend-for-frontend recipe search for FreshLens.
+Postgres + Express on port **3080**. Image: **`ghcr.io/latsalmonman/freshlens-bff`**.
 
 ## Endpoints
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/health` | Fast count estimate; `?exact=1` for true count |
-| GET/POST | `/recipes/search` | Pantry match (`?ingredients=chicken,rice`) |
-| GET | `/recipes/:id` | Ingredients + steps (`r0`, `r123`, …) |
+| GET | `/health` | Fast estimate; `?exact=1` for exact count |
+| GET/POST | `/recipes/search` | `?ingredients=chicken,rice` |
+| GET | `/recipes/:id` | e.g. `r0` |
 
 ---
 
-## TrueNAS SCALE setup
+## Publish (GitHub Actions)
 
-### 1. Dataset layout
+Pushes to `main` build and publish:
 
-Create (or reuse) a dataset, e.g. under pool **SwimmingPool**:
+`ghcr.io/latsalmonman/freshlens-bff:latest`
 
-```
-/mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/
-  app/          ← clone / copy of this repo
-  data/         ← put full_dataset.csv or .csv.gz here
-  pgdata/       ← empty; Postgres owns this
-```
+After the first run, open the package on GitHub → **Package settings** → set visibility to **Public** so TrueNAS can pull without a login.
 
-```bash
-mkdir -p /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/{app,data,pgdata}
-```
+---
 
-Copy the CSV into `data/` (from your Mac share or `scp`). Prefer gzip:
+## TrueNAS: Install via YAML (recommended)
+
+This is the Apps “config” path: **Discover Apps → ⋮ next to Custom App → Install via YAML**.
+
+### 1. Prepare dataset folders
 
 ```bash
-# on Mac
-gzip -k -6 ~/Downloads/dataset/full_dataset.csv
-# copy full_dataset.csv.gz into the dataset's data/ folder via SMB/SFTP
+mkdir -p /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/{data,pgdata}
 ```
 
-### 2. Get this repo onto the NAS
+Copy `full_dataset.csv.gz` into `data/` (SMB/SFTP from your Mac).
 
-**Option A — git clone (if NAS can reach GitHub):**
+### 2. Paste compose
+
+1. Apps → Discover Apps  
+2. Click **⋮** beside **Custom App** → **Install via YAML**  
+3. Application name: `freshlens-bff`  
+4. Paste contents of [`truenas-compose.yaml`](truenas-compose.yaml)  
+5. Edit the two `/mnt/SwimmingPool/...` volume paths if your pool/dataset differs  
+6. Save / Deploy  
+
+TrueNAS pulls `postgres:16-alpine` and `ghcr.io/latsalmonman/freshlens-bff:latest` — **no build on the NAS**.
+
+### 3. Check API
+
+From a browser on home Wi‑Fi:
+
+```
+http://<NAS-LAN-IP>:3080/health
+```
+
+### 4. Import the CSV (one time)
+
+TrueNAS YAML stacks don’t run Compose profiles well. Import from **SSH** (or Shell):
 
 ```bash
-cd /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset
-git clone https://github.com/LatSalmonMan/FreshLensBFF.git app
-cd app
-cp .env.example .env
-# edit HOST_* paths in .env if your dataset path differs
+# Find the compose project network (name varies slightly)
+docker network ls | grep -i freshlens
+
+# Import (use the network name from the previous line; often ends in _default)
+docker run --rm \
+  --network ix-freshlens-bff_default \
+  -v /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/data:/data:ro \
+  -e DATABASE_URL=postgres://freshlens:freshlens@db:5432/recipes \
+  ghcr.io/latsalmonman/freshlens-bff:latest \
+  node src/importCsv.js --truncate --file /data/full_dataset.csv.gz
 ```
 
-**Option B — copy files via SMB** from your Mac into `app/`.
-
-### 3. Install as a Custom App (Docker Compose)
-
-TrueNAS SCALE (Electric Eel / Docker):
-
-1. **Apps** → **Discover Apps** → **Custom App** (or Install via YAML / Compose)
-2. Paste or point at this repo’s `docker-compose.yml`
-3. Ensure `.env` is next to the compose file with correct `HOST_DATA_DIR` and `HOST_PGDATA_DIR`
-4. Deploy
-
-Or from SSH on the NAS:
+If `--network` can’t resolve `db`, list containers and use the DB container’s network:
 
 ```bash
-cd /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/app
-docker compose up -d --build
+docker ps --format '{{.Names}}' | grep -i freshlens
+docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' <db-container-name>
 ```
 
-Do **not** publish Postgres `5432` to the LAN unless you need it.
-
-### 4. Import recipes (one-shot)
+Smoke test first:
 
 ```bash
-cd /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/app
-
-# Smoke test
-docker compose --profile import run --rm importer -- --limit 50000 --file /data/full_dataset.csv.gz
-
-curl "http://127.0.0.1:3080/health?exact=1"
-curl "http://127.0.0.1:3080/recipes/search?ingredients=chicken,rice,onion"
-
-# Full catalog (~1 hour depending on NAS CPU/disk)
-docker compose --profile import run --rm importer -- --truncate --file /data/full_dataset.csv.gz
+docker run --rm \
+  --network ix-freshlens-bff_default \
+  -v /mnt/SwimmingPool/lstsalmonman/FreshLens-Recipe-Dataset/data:/data:ro \
+  -e DATABASE_URL=postgres://freshlens:freshlens@db:5432/recipes \
+  ghcr.io/latsalmonman/freshlens-bff:latest \
+  node src/importCsv.js --limit 50000 --file /data/full_dataset.csv.gz
 ```
 
-Uncompressed CSV:
+Then:
 
-```bash
-docker compose --profile import run --rm importer -- --truncate --file /data/full_dataset.csv
+```
+http://<NAS-LAN-IP>:3080/health?exact=1
 ```
 
-### 5. Point FreshLens at the NAS
-
-On your phone/Mac, home Wi‑Fi only (unless you add a tunnel later).
-
-FreshLens `.env`:
+### 5. Point FreshLens
 
 ```bash
 EXPO_PUBLIC_RECIPE_API_URL=http://<NAS-LAN-IP>:3080
 ```
 
-Restart Expo (`npx expo start -c`). Find recipes uses the BFF; if NAS is down it falls back to the small on-device catalog.
+---
+
+## TrueNAS: Custom App form (single container)
+
+The **Custom App** button (form UI) is awkward for **API + Postgres**. Prefer **Install via YAML** above.
+
+If you only need the API container against an existing Postgres elsewhere, use Custom App with:
+
+- Image: `ghcr.io/latsalmonman/freshlens-bff:latest`
+- Port: `3080:3080`
+- Env: `DATABASE_URL=postgres://...`
 
 ---
 
-## Local Mac / Linux (optional)
+## Local docker-compose (dev)
+
+[`docker-compose.yml`](docker-compose.yml) still supports `build: .` and an `importer` profile. Copy `.env.example` → `.env` and adjust host paths.
 
 ```bash
-cp .env.example .env
-# set HOST_DATA_DIR=./data HOST_PGDATA_DIR=./pgdata
-mkdir -p data pgdata
-# put a CSV (or small sample) in data/
 docker compose up -d --build
 docker compose --profile import run --rm importer -- --limit 1000 --file /data/full_dataset.csv
 ```
 
-Small JSON seed (dev only):
-
-```bash
-# mount recipes.json into /data and:
-docker compose run --rm -v "$(pwd)/data:/data:ro" api node src/seed.js
-```
-
 ---
 
-## Resources
+## Notes
 
-- Full import wants free disk for Postgres (~15–25 GB peak) and preferably **≥8 GB RAM** on the NAS for comfort
-- Dataset has **no images** — cards are title-only
-- RecipeNLG / scraped sources: fine for **private** use; not a clean commercial license
-
-## Repo layout
-
-```
-Dockerfile
-docker-compose.yml
-.env.example
-src/          # Express API + CSV importer
-sql/          # schema + post-load indexes
-data/         # mount point for CSV (gitignored contents)
-```
+- No recipe images in this dataset (title-only cards)
+- Private / prototype use of RecipeNLG-style scrapes
+- Prefer ≥8 GB free RAM and ~25 GB disk for a full 2.2M import
