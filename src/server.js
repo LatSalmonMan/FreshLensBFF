@@ -1,6 +1,11 @@
 import express from 'express';
 import { query } from './db.js';
 import { ownedByPantry, scrub } from './normalize.js';
+import {
+  ensureImageColumns,
+  enrichRecipeImage,
+  enrichRecipeImages,
+} from './enrichImage.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3080);
@@ -91,7 +96,7 @@ async function searchHandler(req, res) {
     }
 
     const recipes = await query(
-      `SELECT id, title, image_url, minutes, servings, source_name, category, cuisine, link
+      `SELECT id, title, image_url, image_checked, minutes, servings, source_name, category, cuisine, link
        FROM recipes WHERE id = ANY($1::text[])`,
       [ids],
     );
@@ -108,7 +113,9 @@ async function searchHandler(req, res) {
       byRecipe.set(row.recipe_id, list);
     }
 
-    const cards = recipes.rows
+    const rowById = new Map(recipes.rows.map((r) => [r.id, r]));
+
+    let cards = recipes.rows
       .map((r) => {
         const ingredients = byRecipe.get(r.id) || [];
         const used = ingredients.filter((n) => ownedByPantry(n, pantry));
@@ -136,6 +143,21 @@ async function searchHandler(req, res) {
       })
       .slice(0, limit);
 
+    // Fill images for the first visible cards (og:image from source, else placeholder)
+    const needRows = cards
+      .filter((c) => !c.imageUrl)
+      .slice(0, 12)
+      .map((c) => rowById.get(c.externalId))
+      .filter(Boolean);
+    if (needRows.length) {
+      const urls = await enrichRecipeImages(needRows, { limit: 12, concurrency: 4 });
+      cards = cards.map((c) => {
+        if (c.imageUrl) return c;
+        const url = urls.get(c.externalId);
+        return url ? { ...c, imageUrl: url } : c;
+      });
+    }
+
     res.json({
       cards,
       pantryUsed: kitchen,
@@ -154,12 +176,13 @@ app.get('/recipes/:id', async (req, res) => {
   try {
     const id = req.params.id;
     const r = await query(
-      `SELECT id, title, image_url, minutes, servings, source_name, origin, category, cuisine, link, steps_json
+      `SELECT id, title, image_url, image_checked, minutes, servings, source_name, origin, category, cuisine, link, steps_json
        FROM recipes WHERE id = $1`,
       [id],
     );
     if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
     const row = r.rows[0];
+    const imageUrl = (await enrichRecipeImage(row)) || undefined;
     const ings = await query(
       `SELECT name_raw FROM recipe_ingredients WHERE recipe_id = $1 ORDER BY name_raw`,
       [id],
@@ -167,7 +190,7 @@ app.get('/recipes/:id', async (req, res) => {
     res.json({
       id: row.id,
       title: row.title,
-      imageUrl: row.image_url || undefined,
+      imageUrl,
       minutes: row.minutes ?? 30,
       servings: row.servings ?? 4,
       sourceName: row.source_name || undefined,
@@ -184,6 +207,13 @@ app.get('/recipes/:id', async (req, res) => {
   }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`FreshLens recipe API on :${PORT}`);
-});
+ensureImageColumns()
+  .then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`FreshLens recipe API on :${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to prepare image columns', err);
+    process.exit(1);
+  });
