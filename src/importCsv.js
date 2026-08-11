@@ -31,9 +31,14 @@ function parseArgs(argv) {
   return out;
 }
 
+/** Postgres text/json reject U+0000 — strip from all COPY fields. */
+function stripNulls(value) {
+  return String(value).replace(/\u0000/g, '');
+}
+
 function escapeCopy(value) {
   if (value == null) return '\\N';
-  return String(value)
+  return stripNulls(value)
     .replace(/\\/g, '\\\\')
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
@@ -43,8 +48,8 @@ function escapeCopy(value) {
 function parseJsonList(raw) {
   if (raw == null || raw === '') return [];
   try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.map((x) => String(x)) : [];
+    const v = JSON.parse(stripNulls(raw));
+    return Array.isArray(v) ? v.map((x) => stripNulls(x)) : [];
   } catch {
     return [];
   }
