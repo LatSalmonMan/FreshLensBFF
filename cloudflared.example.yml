@@ -1,0 +1,13 @@
+# Public hostname → FreshLens BFF (example for cloudflared)
+
+# Create a named tunnel in Cloudflare Zero Trust, then either:
+#   - paste TUNNEL_TOKEN into the cloudflared TrueNAS app, or
+#   - mount this file and run: cloudflared tunnel --config /etc/cloudflared/config.yml run
+
+tunnel: YOUR_TUNNEL_UUID
+credentials-file: /etc/cloudflared/YOUR_TUNNEL_UUID.json
+
+ingress:
+  - hostname: freshlens-recipes.duckdns.org
+    service: http://192.168.86.66:10100
+  - service: http_status:404

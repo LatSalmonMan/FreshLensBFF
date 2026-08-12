@@ -30,3 +30,26 @@ CREATE TABLE IF NOT EXISTS ingredient_index (
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS link TEXT;
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS image_checked BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE ingredient_index ADD COLUMN IF NOT EXISTS ing_count SMALLINT NOT NULL DEFAULT 0;
+
+-- Open Food Facts barcode cache (instant first scans on LAN)
+CREATE TABLE IF NOT EXISTS products (
+  code TEXT NOT NULL,
+  product_name TEXT,
+  brands TEXT,
+  ingredients_text TEXT,
+  additives_tags TEXT,
+  nutriscore_grade TEXT,
+  nova_group SMALLINT,
+  image_url TEXT,
+  stores TEXT,
+  serving_size TEXT,
+  energy_kcal_100g REAL,
+  sugars_100g REAL,
+  saturated_fat_100g REAL,
+  salt_100g REAL,
+  sodium_100g REAL,
+  fiber_100g REAL,
+  proteins_100g REAL,
+  fat_100g REAL,
+  carbohydrates_100g REAL
+);

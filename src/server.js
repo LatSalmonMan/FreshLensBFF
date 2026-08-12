@@ -6,6 +6,8 @@ import {
   enrichRecipeImage,
   enrichRecipeImages,
 } from './enrichImage.js';
+import { barcodeVariants, ensureProductsTable, findProduct, upsertProduct } from './products.js';
+import { requireApiKey, resolveApiKey } from './auth.js';
 
 const app = express();
 const PORT = Number(process.env.PORT || 3080);
@@ -16,19 +18,30 @@ app.get('/health', async (req, res) => {
   try {
     const exact = req.query.exact === '1' || req.query.exact === 'true';
     if (exact) {
-      const r = await query('SELECT COUNT(*)::bigint AS n FROM recipes');
-      return res.json({ ok: true, recipes: Number(r.rows[0].n), exact: true });
+      const r = await query(
+        `SELECT
+           (SELECT COUNT(*)::bigint FROM recipes) AS recipes,
+           (SELECT COUNT(*)::bigint FROM products) AS products`,
+      );
+      return res.json({
+        ok: true,
+        recipes: Number(r.rows[0].recipes),
+        products: Number(r.rows[0].products),
+        exact: true,
+      });
     }
     // Fast estimate — avoids full scan of multi‑million row tables
     const r = await query(`
-      SELECT COALESCE(c.reltuples, 0)::bigint AS n
+      SELECT c.relname, COALESCE(c.reltuples, 0)::bigint AS n
       FROM pg_class c
       JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE c.relname = 'recipes' AND n.nspname = 'public'
+      WHERE c.relname IN ('recipes', 'products') AND n.nspname = 'public'
     `);
+    const counts = Object.fromEntries(r.rows.map((row) => [row.relname, Number(row.n)]));
     res.json({
       ok: true,
-      recipes: Number(r.rows[0]?.n ?? 0),
+      recipes: counts.recipes ?? 0,
+      products: counts.products ?? 0,
       exact: false,
     });
   } catch (err) {
@@ -39,6 +52,9 @@ app.get('/health', async (req, res) => {
     res.status(500).json({ ok: false, error: String(err.message || err) + hint });
   }
 });
+
+// Protect catalog routes when FRESHLENS_API_KEY / API_KEY is set. /health stays open.
+app.use(requireApiKey);
 
 /**
  * GET /recipes/search?ingredients=chicken,rice,onion&limit=100
@@ -172,6 +188,30 @@ async function searchHandler(req, res) {
 app.get('/recipes/search', searchHandler);
 app.post('/recipes/search', searchHandler);
 
+app.get('/products/:code', async (req, res) => {
+  try {
+    const product = await findProduct(req.params.code);
+    if (!product) return res.status(404).json({ error: 'Not found' });
+    res.json({ product });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
+app.post('/products', async (req, res) => {
+  try {
+    const product = req.body?.product || req.body;
+    const code = barcodeVariants(product?.code)[0];
+    if (!code) return res.status(400).json({ error: 'Missing product.code' });
+    await upsertProduct({ ...product, code });
+    res.json({ ok: true, code });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err.message || err) });
+  }
+});
+
 app.get('/recipes/:id', async (req, res) => {
   try {
     const id = req.params.id;
@@ -207,13 +247,16 @@ app.get('/recipes/:id', async (req, res) => {
   }
 });
 
-ensureImageColumns()
+Promise.all([ensureImageColumns(), ensureProductsTable()])
   .then(() => {
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`FreshLens recipe API on :${PORT}`);
+      const keyOn = Boolean(resolveApiKey());
+      console.log(
+        `FreshLens recipe API on :${PORT}${keyOn ? ' (API key required)' : ' (open — set FRESHLENS_API_KEY for tunnels)'}`,
+      );
     });
   })
   .catch((err) => {
-    console.error('Failed to prepare image columns', err);
+    console.error('Failed to prepare database', err);
     process.exit(1);
   });

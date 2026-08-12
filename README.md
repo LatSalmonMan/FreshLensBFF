@@ -9,9 +9,13 @@ Postgres + Express on port **3080**. Image: **`ghcr.io/latsalmonman/freshlens-bf
 
 | Method | Path | Notes |
 |--------|------|--------|
-| GET | `/health` | Fast estimate; `?exact=1` for exact count |
+| GET | `/health` | Fast estimate; `?exact=1` for exact count (no API key) |
 | GET/POST | `/recipes/search` | `?ingredients=chicken,rice` |
 | GET | `/recipes/:id` | e.g. `r0` |
+| GET | `/products/:code` | Local Open Food Facts barcode lookup |
+| POST | `/products` | Cache a product after a live OFF miss |
+
+When `FRESHLENS_API_KEY` (or `API_KEY`) is set on the server, recipe/product routes require header `X-FreshLens-Key`. See **[SHARE.md](SHARE.md)** for Cloudflare / DuckDNS / TestFlight without buying a domain.
 
 ---
 
@@ -99,11 +103,33 @@ Then:
 http://<NAS-LAN-IP>:3080/health?exact=1
 ```
 
+### 4b. Import Open Food Facts (instant barcode scans)
+
+Same **app shell** as the recipe import (not the TrueNAS system shell):
+
+```bash
+node src/importOff.js --download --truncate
+```
+
+That downloads the ~0.9 GB dump into `/data` and loads US/world products. Takes a while. When it finishes:
+
+```
+http://<NAS-LAN-IP>:10100/health?exact=1
+```
+
+`products` should be hundreds of thousands, not 0.
+
+Re-run later with `--truncate --download` to refresh. Use `--all-countries` if you want the full global dump.
+
 ### 5. Point FreshLens
 
 ```bash
-EXPO_PUBLIC_RECIPE_API_URL=http://<NAS-LAN-IP>:3080
+EXPO_PUBLIC_RECIPE_API_URL=http://<NAS-LAN-IP>:10100
+# Optional — only if FRESHLENS_API_KEY is set on the BFF:
+# EXPO_PUBLIC_RECIPE_API_KEY=same-secret-as-server
 ```
+
+To share Find recipes with people off your Wi‑Fi (Cloudflare tunnel, DuckDNS, API key, TestFlight), follow **[SHARE.md](SHARE.md)**. Keep the NAS BFF + Postgres running when they use recipes.
 
 ---
 
