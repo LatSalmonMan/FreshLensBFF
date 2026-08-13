@@ -105,21 +105,33 @@ http://<NAS-LAN-IP>:3080/health?exact=1
 
 ### 4b. Import Open Food Facts (instant barcode scans)
 
-Same **app shell** as the recipe import (not the TrueNAS system shell):
+Fills the empty `products` table so Scan hits your NAS first instead of the public Open Food Facts site every time.
+
+**Do this in the BFF app’s container shell — not System → Shell.**
+
+1. TrueNAS → **Apps**
+2. Open the **FreshLens BFF** app (the one that serves recipes / port **10100** or **3080**)
+3. Open a **Shell** / **Console** on the **api** (BFF) container  
+   - If the stack has two containers, pick the one running `freshlens-bff`, **not** Postgres  
+   - If it asks for a command, use `/bin/sh` (or leave the default)
+4. Paste this one line and press Enter:
 
 ```bash
 node src/importOff.js --download --truncate
 ```
 
-That downloads the ~0.9 GB dump into `/data` and loads US/world products. Takes a while. When it finishes:
+5. Leave that window open. It downloads ~0.9 GB, then loads US/world products (often **30–90+ minutes**). You should see progress lines like `… 50,000 products`.
+6. When it prints a final `Counts: { products: '…' }`, you’re done. Close the shell.
+
+**Check it worked** (from your Mac browser or Terminal):
 
 ```
-http://<NAS-LAN-IP>:10100/health?exact=1
+http://192.168.86.66:10100/health?exact=1
 ```
 
-`products` should be hundreds of thousands, not 0.
+`products` should be **hundreds of thousands**, not `0`. Recipes count should stay ~2.2M.
 
-Re-run later with `--truncate --download` to refresh. Use `--all-countries` if you want the full global dump.
+Re-run the same command later to refresh. Add `--all-countries` only if you want the full global dump (much larger / slower).
 
 ### 5. Point FreshLens
 

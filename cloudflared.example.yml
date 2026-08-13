@@ -8,6 +8,6 @@ tunnel: YOUR_TUNNEL_UUID
 credentials-file: /etc/cloudflared/YOUR_TUNNEL_UUID.json
 
 ingress:
-  - hostname: freshlens-recipes.duckdns.org
+  - hostname: recipes.yourdomain.com
     service: http://192.168.86.66:10100
   - service: http_status:404

@@ -82,27 +82,40 @@ From a Mac (optional one-shot test):
 cloudflared tunnel --url http://192.168.86.66:10100
 ```
 
-### B. Stable free hostname (DuckDNS + Cloudflare named tunnel)
+### B. Stable hostname (named Cloudflare tunnel)
 
-Best path for parents without paying for a domain.
+Named tunnels need a **domain whose DNS is on Cloudflare** (free Cloudflare plan is enough).  
+DuckDNS alone cannot host that DNS — skip it for this path.
 
-1. Create a free [DuckDNS](https://www.duckdns.org) subdomain, e.g. `freshlens-recipes.duckdns.org`  
-2. Create a free [Cloudflare](https://dash.cloudflare.com) account  
-3. Add the DuckDNS hostname to Cloudflare (follow DuckDNS “how to use with Cloudflare” / CNAME to Cloudflare if you use their NS, **or** create a Cloudflare Tunnel and point DuckDNS at the tunnel target Cloudflare gives you)  
-4. Install **cloudflared** on TrueNAS as a Custom App:
-   - Image: `cloudflare/cloudflared:latest`  
-   - Command / args: `tunnel --no-autoupdate run`  
-   - Env: `TUNNEL_TOKEN=<token from Cloudflare Zero Trust → Networks → Tunnels → Create>`  
-5. In the Cloudflare tunnel config, public hostname → service `http://192.168.86.66:10100` (or the BFF container hostname on the Docker network)  
-6. Set on TrueNAS BFF: `FRESHLENS_API_KEY=…`  
-7. Set in FreshLens `.env`:
+**Cheapest reliable path:** buy any cheap domain (~$1–12/yr), add it to Cloudflare, then:
+
+1. Free [Cloudflare](https://dash.cloudflare.com) account → add the domain → switch nameservers when Cloudflare asks  
+2. Zero Trust / Cloudflare One → **Networks → Tunnels → Create**  
+   - Name: `freshlens`  
+   - Copy the **tunnel token**  
+3. On TrueNAS, replace the quick-tunnel Custom App (`tunnel --url …`) with:
+   | Field | Value |
+   |--------|--------|
+   | Image | `cloudflare/cloudflared:latest` |
+   | Command / args | `tunnel --no-autoupdate run` |
+   | Env | `TUNNEL_TOKEN=<paste token>` |
+   | Restart | Always |
+4. In the tunnel → **Public Hostname** → Add:
+   - Subdomain: `recipes` (or blank for apex)  
+   - Domain: your domain  
+   - Service type: HTTP  
+   - URL: `http://192.168.86.66:10100`  
+5. Cloudflare auto-creates the DNS CNAME. Test: `https://recipes.yourdomain.com/health`  
+6. FreshLens `.env`:
    ```
-   EXPO_PUBLIC_RECIPE_API_URL=https://freshlens-recipes.duckdns.org
-   EXPO_PUBLIC_RECIPE_API_KEY=…
+   EXPO_PUBLIC_RECIPE_API_URL=https://recipes.yourdomain.com
+   EXPO_PUBLIC_RECIPE_API_KEY=…   # same as FRESHLENS_API_KEY
    ```
-8. Rebuild Release / TestFlight  
+7. Rebuild the phone app  
 
 **Do not** tunnel Postgres (`5432`) or the TrueNAS UI — only the recipe API port.
+
+Until you have a domain, keep using the quick tunnel in §3A (URL changes if that app restarts).
 
 ---
 
@@ -132,7 +145,7 @@ Their pantry, scans, and favorites stay **on their phone**. Your Gemini key stil
 
 - [ ] (Optional home) Keep `EXPO_PUBLIC_RECIPE_API_URL=http://192.168.86.66:10100`, no API key  
 - [ ] (Before tunnel) Set matching `FRESHLENS_API_KEY` + `EXPO_PUBLIC_RECIPE_API_KEY`  
-- [ ] Cloudflare account + DuckDNS (or quick tunnel for a one-night test)  
+- [ ] Cloudflare account + domain on Cloudflare DNS (or quick tunnel until then)  
 - [ ] TrueNAS BFF + Postgres (+ cloudflared) left running  
 - [ ] Apple Developer enrolled  
 - [ ] Off-LAN Find recipes smoke test  
